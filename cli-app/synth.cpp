@@ -203,62 +203,92 @@ struct Resonator {
 };
 
 
-
-
 void generatePianoNote(float* buffer, double freq, bool sustain) {
-    // 3 strings per note
-    double detune[3] = { -0.0025, 0.0, +0.002 };
+    double pitch = std::clamp(
+        (log2(freq / 55.0)) / 5.0,
+        0.0, 1.0
+    );
 
-    // Soundboard resonances (broad + musical)
-    Resonator board[3];
-    board[0].setup(180.0, 0.002);
-    board[1].setup(420.0, 0.003);
-    board[2].setup(920.0, 0.004);
+    bool bass = freq < 110.0;
+
+    int maxHarmonics = bass ? 3 : int(6 + pitch * 10);
+    double inharmAmount = bass ? 0.00005 : (0.0002 + pitch * 0.001);
+    double attackRate = bass ? 8.0 : (15.0 + pitch * 40.0);
+
+    double boardMix = bass ? 0.85 : (0.8 - pitch * 0.35);
+    double noiseLevel = bass ? 0.45 : (1.0 - pitch) * 0.2;
+
+    double detune[3] = {
+        -0.0008 * pitch,
+         0.0,
+        +0.0012 * pitch
+    };
+
+    Resonator board[4];
+    board[0].setup(90.0,  0.0015);
+    board[1].setup(180.0, 0.0025);
+    board[2].setup(420.0, 0.0035);
+    board[3].setup(900.0, 0.005);
+
+    Resonator air;
+    air.setup(2500.0, 0.015);  // short “air splash”
 
     for (int i = 0; i < PIANO_N; i++) {
         double t = double(i) / SAMPLE_RATE;
 
-        // --- Envelope ---
-        double attack = 1.0 - exp(-t * 35.0);
-        double decayRate = sustain ? 0.25 : 1.2;
-        double env = attack * exp(-t * decayRate);
+        double env =
+            (1.0 - exp(-t * attackRate)) *
+            exp(-t * (sustain ? 0.35 : (bass ? 0.9 : 1.4)));
 
         double s = 0.0;
 
-        // --- Strings ---
+        // --- STRINGS (de-idealized) ---
         for (int st = 0; st < 3; st++) {
             double f = freq * (1.0 + detune[st]);
 
-            for (int k = 1; k <= 12; k++) {
-                double inharm = 1.0 + 0.001 * k * k;
+            for (int k = 1; k <= maxHarmonics; k++) {
+                double inharm = 1.0 + inharmAmount * k * k;
                 double hf = f * k * inharm;
 
-                // High partials die fast
-                double partialDecay = exp(-t * k * (sustain ? 1.8 : 3.5));
-                double amp = (1.0 / k) * partialDecay;
+                double amp =
+                    (1.0 / k) *
+                    exp(-t * k * (bass ? 4.5 : 2.5));
 
-                s += amp * sin(2.0 * M_PI * hf * t);
+                // slight phase chaos in bass
+                double phaseJitter = bass ? sin(t * 1200.0) * 0.002 : 0.0;
+
+                s += amp * sin(2.0 * M_PI * hf * t + phaseJitter);
             }
         }
 
-        // --- Hammer excitation (felt, not metal) ---
-        double hammer =
-            exp(-t * 180.0) *
-            sin(2.0 * M_PI * freq * 2.5 * t);
+        // --- HAMMER SCRAPE (THIS IS THE KEY) ---
+        double hammerNoise =
+            ((rand() / (double)RAND_MAX) * 2.0 - 1.0) *
+            exp(-t * (bass ? 120.0 : 220.0));
 
-        // --- Soundboard ---
+        double hammer = hammerNoise * noiseLevel;
+
+        // metallic scrape burst
+        hammer +=
+            exp(-t * 90.0) *
+            sin(2.0 * M_PI * (bass ? 1800.0 : 3200.0) * t) *
+            (bass ? 0.25 : 0.08);
+
+        // --- SOUNDBOARD ---
         double boardOut = 0.0;
-        for (int r = 0; r < 3; r++)
-            boardOut += board[r].process(s);
+        for (int r = 0; r < 4; r++)
+            boardOut += board[r].process(s + hammer);
 
-        // --- Combine ---
+        // --- AIR BLOOM ---
+        double airOut = air.process(s + hammer);
+
         double sample =
-            (s * 0.7 + boardOut * 0.6 + hammer * 0.15) * env;
+            (s * (1.0 - boardMix) +
+             boardOut * boardMix +
+             airOut * 0.15 +
+             hammer * 0.3) * env;
 
-        // Gentle saturation (tape / console)
-        sample = tanh(sample * 1.1);
-
-        buffer[i] = (float)(sample * 0.28);
+        buffer[i] = (float)(tanh(sample * 1.25) * 0.3);
     }
 }
 
