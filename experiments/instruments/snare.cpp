@@ -45,42 +45,55 @@ void writeWav(const char* filename, const short* samples, int numSamples) {
         file.write((char*)&samples[i], 2);
     }
 }
-
-// Generate a very simple electronic snare
+// Generate a simple electronic closed hi-hat
 int main() {
-    double durationSec = 0.15; // 150 ms snare
+    double durationSec = 0.08; // 80 ms closed hat
     int numSamples = durationSec * SAMPLE_RATE;
 
     short* buffer = new short[numSamples];
 
-    std::mt19937 rng(1234);
+    std::mt19937 rng(5678);
     std::uniform_real_distribution<double> noise(-1.0, 1.0);
 
-    double toneFreq = 180.0;
+    // metallic partial frequencies (inharmonic)
+    double freqs[] = { 8000.0, 9500.0, 12000.0, 14500.0 };
+    int numPartials = 4;
 
     for (int i = 0; i < numSamples; i++) {
         double t = double(i) / SAMPLE_RATE;
 
-        // envelopes (fast decay)
-        double noiseEnv = exp(-t * 25.0);  // noise decays quickly
-        double toneEnv  = exp(-t * 32.0);  // tone decays even faster
+        // very fast envelope
+        double env = exp(-t * 45.0);
 
-        // components
-        double n = noise(rng) * noiseEnv;
-        double tone = sin(2.0 * M_PI * toneFreq * t) * toneEnv;
+        // noise component (high-frequency emphasis)
+        double n = noise(rng);
 
-        // mix
-        double sample = 0.8 * n + 0.4 * tone;
+        // crude high-pass: subtract low component
+        static double prevNoise = 0.0;
+        double hpNoise = n - 0.98 * prevNoise;
+        prevNoise = n;
 
-        // convert to 16-bit PCM
-        buffer[i] = (short)(sample * 30000);
+        // metallic ringing
+        double metal = 0.0;
+        for (int k = 0; k < numPartials; k++) {
+            metal += sin(2.0 * M_PI * freqs[k] * t);
+        }
+        metal /= numPartials;
+
+        double sample =
+            0.7 * hpNoise +
+            0.5 * metal;
+
+        sample *= env;
+
+        buffer[i] = (short)(sample * 24000);
     }
 
-    writeWav("snare.wav", buffer, numSamples);
-
+    writeWav("hihat.wav", buffer, numSamples);
     delete[] buffer;
 
-    cout << "Generated snare.wav" << endl;
+    cout << "Generated hihat.wav" << endl;
     return 0;
 }
+
 

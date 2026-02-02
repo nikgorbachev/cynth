@@ -7,6 +7,8 @@ using namespace std;
 const int SAMPLE_RATE = 44100;
 const float PI = 3.141592653589793f;
 
+
+
 // Write a simple .wav file header
 void writeWavHeader(ofstream &file, int numSamples) {
     int byteRate = SAMPLE_RATE * 2;
