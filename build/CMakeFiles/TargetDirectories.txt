@@ -1,0 +1,3 @@
+/Users/nikolay/projects/cynth/build/CMakeFiles/cynth.dir
+/Users/nikolay/projects/cynth/build/CMakeFiles/edit_cache.dir
+/Users/nikolay/projects/cynth/build/CMakeFiles/rebuild_cache.dir
