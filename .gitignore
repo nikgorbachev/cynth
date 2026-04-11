@@ -3,3 +3,11 @@
 *.out
 *.wav
 __pycache__/
+*.out
+*.app
+*.exe
+*.dylib
+*.so
+*.a
+build/CMakeFiles/
+CMakeLists.txt
